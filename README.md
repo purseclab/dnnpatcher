@@ -14,6 +14,11 @@ cp DnD/angr_env/base.py patcher/lib/python3.8/site-packages/claripy/ast/base.py
 pip install -U patcherex2
 ```
 
+dnnpatcher reliaes on GLOW compiler to compile new operaters for the
+*createNewOp* API. The glow compiler must be placed ${HOME} and installed by
+following directions mentioned in https://github.com/pytorch/glow.
+
+
 ### API and usage
 
 dnnpatcher supports below dnn modification operations:
