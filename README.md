@@ -1,5 +1,19 @@
 # DNNPATCHER: A platform to patch deep neural network (DNN) binaries.
 
+dnnpatcher is a framework for patching DNN binaries. The main goal of this
+framework is to bridge the gap between low-level binary patching operations and
+high-level DNN network modifications. It takes user requests such as changing
+weights/bias of an operator or add a new operator and translates them to
+low-level binary patching operations and applies them to generate a new DNN
+binary. For example, to add a new operator, it accepts operator type, position
+in the DNN and its attributes. Based on these user provided info, it first
+generates a high-level ONNX model for this new operator, compiles this ONNX
+model to assembly function and patches it on to DNN binary. Additionally, it
+also changes the dispatcher function of the DNN to place a call to this new
+operator at appropriate location on the DNN.
+
+dnnpatcher has been built on top of DnD, a DNN decompiler and patcherex2,
+a versatile binary patching framework.
 
 ### Environment 
 
