@@ -19,8 +19,14 @@ pip install -U patcherex2
 dnnpatcher supports below dnn modification operations:
 
 1. *changeWeights(op\_id, new\_weights):* Change weights of a given operator
-   (op\_id)
-2. *changeBias(op\_id, new\_weights):* Change bias of a given operator (op\_id)
+   (op\_id).
+2. *changeBias(op\_id, new\_weights):* Change bias of a given operator (op\_id).
 3. *createNewOp("op_type", [ predecessor op_id list ], [ successor op_id list],
    { "attr name", val }):* Add a new operator between the given list of
    predecessor operators and successor operators.
+
+Examples of how to use these dnn modification operations are present in
+*examples/* directory. The operations can be implemented in an interactive
+manner using ipython terminal as shown in the videos in *examples/* directory. 
+
+
