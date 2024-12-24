@@ -17,6 +17,6 @@ deactivate
 
 ### API and usage
 
-dnnpatcher supports three dnn modification operations as below:
+dnnpatcher supports below dnn modification operations:
 
-1. changeWeights(op\_id, new\_weights) 
+(+) *changeWeights(op\_id, new\_weights)* 
