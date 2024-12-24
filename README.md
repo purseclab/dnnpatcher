@@ -1,7 +1,10 @@
 # DNNPATCHER: A platform to patch deep neural network (DNN) binaries.
 
 
-### Environment  
+### Environment 
+
+Follow the below bash commands to prepare the enviornment for dnnpatcher.
+
 ```bash
 git clone https://github.com/purseclab/DnD.git
 python3 -m venv patcher
@@ -11,3 +14,9 @@ cp DnD/angr_env/base.py patcher/lib/python3.8/site-packages/claripy/ast/base.py
 pip install -U patcherex2
 deactivate 
 ```
+
+### API and usage
+
+dnnpatcher supports three dnn modification operations as below:
+
+1. changeWeights(op\_id, new\_weights) 
