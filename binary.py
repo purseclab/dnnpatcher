@@ -17,7 +17,7 @@ class Binary:
         self.proj = proj # Angr object
         self.assembly = Assembly(isa_type)
         self.patcher = None
-        if self.assembly.isaType() == "EMXRT1050":
+        if self.assembly.isaType() == "IMXRT1050":
             logging.getLogger("patcherex").setLevel("DEBUG")
             self.patcher = Patcherex(self.bin_path, target_cls=ElfArmMimxrt1052)
 
@@ -41,28 +41,31 @@ class Binary:
             if section.name == '.text':
                 text_section = section
                 break
+
+        sym_addr = None
+
         
         symbol = obj.loader.find_symbol(target_sym)
+        if target_sym == "Conv":
+            symbol = obj.loader.find_symbol("libjit_conv2d_f")
         #mask = 0xfffffffe
         sym_addr = symbol.rebased_addr
-        
-        asm = "extracted_code:\n"
-    
         if symbol:
             print(f"Symbol {target_sym} found!")
             print(f"Address: {hex(sym_addr)}")
         else:
             print(f"Symbol {target_sym} not found.")
+
+        if target_sym != "Conv":
+            block = obj.factory.block(sym_addr)
+            for insn in block.capstone.insns:
+                #print(f"0x{insn.address:x}: {insn.mnemonic} {insn.op_str}")
+                target_address = self.assembly.getCallTgt(insn)
+                if target_address is not None:
+                    sym_addr = target_address
         
-        block = obj.factory.block(sym_addr)
-        for insn in block.capstone.insns:
-            print(f"0x{insn.address:x}: {insn.mnemonic} {insn.op_str}")
-            if insn.mnemonic in ["bl", "blx"]:
-                if insn.operands:
-                    for operand in insn.operands:
-                        target_address = operand.imm
-                        print("Found target: ",hex(target_address))
-                        sym_addr = target_address
+        asm = "extracted_code:\n"
+    
         
         if text_section is None:
             print(".text section not found.")
@@ -79,7 +82,7 @@ class Binary:
                 if start_addr == sym_addr:
                     asm = asm + target_sym + ":\n"
                 b = text_bytes[i];
-                asm = asm + "  .byte " + str(b) + "\n"
+                asm = asm + self.assembly.byte(b) + "\n"
                 i += 1
                 start_addr += 1
     
@@ -141,9 +144,42 @@ class Binary:
         asm = tramp_sym + ":\n"
         asm = asm + self.assembly.callArgConst(input_buffer[0],1)
         asm = asm + self.assembly.callArgConst(output_buffer[0],2)
+        if weight_sym is not None:
+            asm = asm + self.assembly.callArgLabel(weight_sym,3)
+        if bias_sym is not None:
+            asm = asm + self.assembly.callArgLabel(bias_sym,4)
         asm = asm + self.assembly.jump(target_sym) + "\n"
 
         return tramp_sym,asm
+
+    def readWeights(self, new_op):
+
+        w_file = new_op.weightsfile
+        asm = ""
+        weight_label = "weight"
+        bias_label = "bias"
+        bias_size = new_op.op.info["output_channel"] * 4
+        ctr = 0
+        asm = asm + bias_label + ":\n"
+        bias_crossed = False
+        weight_found = False
+        with open(w_file, "rb") as file:
+            while True:
+                byte = file.read(1)
+                if not byte:  # End of file
+                    break
+                # Process the byte here
+                if bias_crossed == True and weight_found == False:
+                    if ctr % 64 == 0:
+                        weight_found = True
+                        asm = asm + weight_label + ":\n"
+                byte_int = my_int = int.from_bytes(byte, byteorder='big')
+                asm = asm + self.assembly.byte(byte_int) + "\n"
+                ctr = ctr + 1
+                if ctr >= bias_size:
+                    bias_crossed = True
+
+        return weight_label,bias_label,asm
 
     def addNewOp(self, new_op):
         cmd = (
@@ -153,18 +189,30 @@ class Binary:
         )
         os.system(cmd)
         op_asm = self.extractCodeBytes(new_op.objfile, new_op.name)
+        weight_sym = None
+        bias_sym = None
+        Weight_asm = ""
+        if new_op.name == "Conv":
+            weight_sym,bias_sym,weight_asm = self.readWeights(new_op)
+            #op_asm = op_asm + weight_asm
         tramp_sym, tramp_asm = self.createCallSiteForNewOp(
             new_op.op.parent, 
             list(new_op.op.child)[0], 
             new_op.name,
-            None,None
+            weight_sym,bias_sym
         )
         dispatcher_sym, dispatcher_asm = self.addNewOpToDispatcher(
             tramp_sym,
             new_op.op.parent 
         )
 
-        op_asm = dispatcher_asm + tramp_asm + op_asm
+        op_asm = dispatcher_asm + weight_asm + tramp_asm + op_asm
+
+        text_file = open("tmp/conv.asm", "w")
+
+        text_file.write(op_asm)
+
+        text_file.close()
 
         #print(dispatcher_asm)
         print(op_asm)

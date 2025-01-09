@@ -30,7 +30,11 @@ class Assembly:
     def jump(self, tgt_sym):
         return self.isa.jump(tgt_sym)
 
+    def byte(self, val):
+        return self.isa.byte(val)
+
     def callArgConst(self, const, argnum):
         return self.isa.callArgConst(const, argnum)
 
-
+    def callArgLabel(self, label, argnum):
+        return self.isa.callArgLabel(label, argnum)

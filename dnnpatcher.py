@@ -7,8 +7,8 @@ import os
 import capstone
 import dnnop
 import binary
-import emxrt1050
-from emxrt1050 import EmxRT1050
+import imxrt1050
+from imxrt1050 import ImxRT1050
 from binary import Binary
 from dnnop import Operator, Weight, Bias, NewOp
 
@@ -26,6 +26,8 @@ from patcherex2.targets import ElfArmMimxrt1052
 import struct
 import logging
 import numpy as np
+from collections import OrderedDict
+
 
 from enum import Enum
 
@@ -105,7 +107,8 @@ class Dnn:
         
     def display(self):
         print("layer\top id\top type")
-        for layer,operators in self.layer_map.items():
+        lmap = OrderedDict(sorted(self.layer_map.items()))
+        for layer,operators in lmap.items():
             for op_id in operators:
                 op = self.op_map[op_id]
                 print(layer,"\t",op_id,"\t",op.info["op"])
@@ -295,10 +298,10 @@ def loadDNN(path,isa_type):
     # bin_path = "./binary_samples/mnist/evkbimxrt1050_glow_lenet_mnist_release.axf"
 
     isa = None
-    if isa_type == "EMXRT1050":
-        isa = EmxRT1050()
+    if isa_type == "IMXRT1050":
+        isa = ImxRT1050()
     else:
-        print("Unknown architecture...aborting!!\nOnly EMXRT1050 is supported")
+        print("Unknown architecture...aborting!!\nOnly IMXRT1050 is supported")
         return None
 
     proj = load(path)
