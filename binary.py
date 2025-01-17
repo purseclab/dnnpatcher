@@ -31,6 +31,36 @@ class Binary:
         self.patcher.patches.append(ModifyDataPatch(addrs, packed_bytes))
         self.applyPatches()
 
+    def extractNewOpAsm(self,path_to_asm,target_sym):
+        with open(path_to_asm) as file:
+            lines = [line.rstrip() for line in file]
+
+        if target_sym != "Conv":
+            label = target_sym + ":"
+            label_found = False
+            for line in lines:
+                if line == label:
+                    label_found = True
+
+                if label_found == True:
+                    tgt = self.assembly.getCallTgtSym(line)
+                    if tgt != None:
+                        target_sym = tgt
+                        break
+        else:
+            target_sym = "libjit_conv2d_f"
+
+        asm = ""
+        
+        for line in lines:
+            line = self.assembly.convertLabelLoadToPCRltv(line)
+            asm = asm + line + "\n"
+
+        return asm, target_sym
+
+
+
+
     def extractCodeBytes(self,path_to_obj,target_sym):
         obj = angr.Project(path_to_obj, auto_load_libs=False)
         
@@ -82,6 +112,7 @@ class Binary:
                 if start_addr == sym_addr:
                     asm = asm + target_sym + ":\n"
                 b = text_bytes[i];
+                #asm = asm + "." + str(start_addr) + ":\n"
                 asm = asm + self.assembly.byte(b) + "\n"
                 i += 1
                 start_addr += 1
@@ -155,7 +186,7 @@ class Binary:
     def readWeights(self, new_op):
 
         w_file = new_op.weightsfile
-        asm = ""
+        asm = "  .p2align 16\n"
         weight_label = "weight"
         bias_label = "bias"
         bias_size = new_op.op.info["output_channel"] * 4
@@ -185,20 +216,39 @@ class Binary:
         cmd = (
             "~/glow/build_Debug/bin/model-compiler -backend=CPU -model=" + 
             new_op.onnxfile + 
-            " -emit-bundle=tmp/ -target=arm -mcpu=cortex-m7"
+            " -emit-bundle=tmp/ -target=arm -mcpu=cortex-m7 --llvm-save-asm"
         )
         os.system(cmd)
-        op_asm = self.extractCodeBytes(new_op.objfile, new_op.name)
+
+        asm_file = new_op.asmfile
+        formatted_asm_file = "tmp/" + new_op.name + "_filtered.s"
+
+        cmd = (
+            "cat " + asm_file + 
+            " | grep -v " +
+            "\"\\.text\\|\\.syntax\\|\\.eabi\\|\\.fpu\\|\\.file\\|" +
+            "\\.section\\|\\.type\\|\\.code\\|\\.thumb_func\\|" + 
+            "\\.fnstart\\|\\.size\\|\\.cantunwind\\|\\.fnend\\|\\.ident\\|" +
+            "\\.globl\" > " + formatted_asm_file
+        )
+
+        print(cmd)
+
+        os.system(cmd)
+
+        #op_asm = self.extractCodeBytes(new_op.objfile, new_op.name)
+        op_asm,tgt_sym = self.extractNewOpAsm(formatted_asm_file, new_op.name)
         weight_sym = None
         bias_sym = None
-        Weight_asm = ""
+        weight_asm = ""
         if new_op.name == "Conv":
             weight_sym,bias_sym,weight_asm = self.readWeights(new_op)
             #op_asm = op_asm + weight_asm
         tramp_sym, tramp_asm = self.createCallSiteForNewOp(
             new_op.op.parent, 
             list(new_op.op.child)[0], 
-            new_op.name,
+            #new_op.name,
+            tgt_sym,
             weight_sym,bias_sym
         )
         dispatcher_sym, dispatcher_asm = self.addNewOpToDispatcher(
@@ -208,14 +258,16 @@ class Binary:
 
         op_asm = dispatcher_asm + weight_asm + tramp_asm + op_asm
 
-        text_file = open("tmp/conv.asm", "w")
+        test_asm = "tmp/" + new_op.name + "_patch.asm"
+
+        text_file = open(test_asm, "w")
 
         text_file.write(op_asm)
 
         text_file.close()
 
         #print(dispatcher_asm)
-        print(op_asm)
+        #print(op_asm)
         self.patcher.patches.append(
             InsertInstructionPatch("dispatch_new", op_asm, is_thumb=True)
         )

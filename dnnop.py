@@ -72,9 +72,10 @@ class Operator:
     #    return self.writebuffer
 
 class NewOp:
-    def __init__(self,name,op,onnx_file,obj_file,wt_file):
+    def __init__(self,name,op,onnx_file,obj_file,wt_file, asm_file):
         self.name = name
         self.op = op
         self.onnxfile = onnx_file
         self.objfile = obj_file
         self.weightsfile = wt_file
+        self.asmfile = asm_file

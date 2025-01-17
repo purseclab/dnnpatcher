@@ -18,7 +18,7 @@ from DnD.src.ast import extract_ast
 from DnD.src.lifter import lift
 from DnD.src.lifted_ast import LiftedAST, AST_OP
 from DnD.src.timeout import timeout
-from DnD.src.onnx_builder import export_onnx
+from DnD.src.onnx_builder import export_onnx, make_conv, make_relu, make_add
 from DnD.decompiler import lift_func_to_ast, recover_topology
 
 from patcherex2 import *
@@ -28,6 +28,12 @@ import logging
 import numpy as np
 from collections import OrderedDict
 
+import onnx
+from onnx import helper, shape_inference
+from onnx.helper import make_model, make_node, make_graph, make_tensor_value_info
+from onnx import AttributeProto, TensorProto, GraphProto, numpy_helper
+import numpy as np
+from onnx.checker import check_model, check_graph
 
 from enum import Enum
 
@@ -135,14 +141,142 @@ class Dnn:
         return None
     
 
-    def createOnnxModel(self, op_list, model_name, adj_map = defaultdict(set)):
-        ast_map = {}
-        op_info = {}
-        for op in op_list:
-            ast_map[op.addr] = op.ast
-            op_info[op.addr] = op.info
+    def createOnnxModel(self, op, model_name):
 
-        export_onnx(ast_map, adj_map, op_info, model_name)
+        created_nodes = []
+        created_inputs = []
+        created_outputs = []
+        created_inits = []
+
+        output_node = None
+        # create input node
+        inputs_node = make_tensor_value_info(
+            "inputs",
+            TensorProto.FLOAT,
+            [
+                1,  # batch size
+                op.info["input_channel"],
+                op.info["input_height"],
+                op.info["input_width"],
+            ],
+        )
+        if op.info["op"] == AST_OP.ADD:
+            created_inputs.append(inputs_node)
+            created_inputs.append(inputs_node)
+        else:
+            created_inputs.append(inputs_node)
+        if op.info["op"] == AST_OP.CONV:
+
+            node_name = "conv"
+
+            # node
+            nodes, inputs, inits = make_conv(
+                node_name,
+                "inputs",
+                node_name + "_output",
+                op.info["input_width"],
+                op.info["input_height"],
+                1,
+                op.info["input_channel"],
+                op.info["output_channel"],
+                op.info["kernel_width"],
+                op.info["kernel_height"],
+                op.info["padding"],
+                op.info["striding"],
+                op.info["weights"],
+                op.info["bias"],
+            )
+            created_nodes.extend(nodes)
+            created_inits.extend(inits)
+            conv_output = nodes[0].output[0]
+            output_node = make_tensor_value_info(
+                conv_output, 
+                TensorProto.FLOAT, 
+                [
+                    1,  # batch size
+                    op.info["output_channel"],
+                    op.info["output_height"],
+                    op.info["output_width"],
+                ]
+            )
+            #created_outputs.append(output_node)
+            #created_inputs.append(prev_output_node)
+
+            if "relu" in op.info.keys() and op.info["relu"]:
+                node_name = "relu"
+                nodes = make_relu(node_name, conv_output, node_name + "_output")
+                created_nodes.extend(nodes)
+                relu_output_node = make_tensor_value_info(
+                    nodes[0].output[0], 
+                    TensorProto.FLOAT, 
+                    [
+                        1,  # batch size
+                        op.info["output_channel"],
+                        op.info["output_height"],
+                        op.info["output_width"],
+                    ]
+                )
+                output_node = relu_output_node
+
+        elif op.info["op"] == AST_OP.RELU:
+
+            node_name = "relu"
+            nodes = make_relu(node_name, "inputs", node_name + "_output")
+            created_nodes.extend(nodes)
+            output_node = make_tensor_value_info(
+                nodes[0].output[0],
+                TensorProto.FLOAT, 
+                [
+                    1,  # batch size
+                    op.info["output_channel"],
+                    op.info["output_height"],
+                    op.info["output_width"],
+                ]
+            )
+
+        elif op.info["op"] == AST_OP.ADD:
+
+            node_name = "add"
+            nodes = make_add(
+                node_name,
+                "inputs",
+                "inputs",
+                node_name + "_output"
+            )
+            created_nodes.extend(nodes)
+            output_node = make_tensor_value_info(
+                nodes[0].output[0],
+                TensorProto.FLOAT, 
+                [
+                    1,  # batch size
+                    op.info["output_channel"],
+                    op.info["output_height"],
+                    op.info["output_width"],
+                ]
+            )
+
+        else:
+            assert False
+
+
+        created_outputs.append(output_node)
+        #print("Nodes: ",created_nodes)
+        #print("inputs: ",created_inputs)
+        #print("outputs: ",created_outputs)
+        graph = make_graph(
+            created_nodes, "test", created_inputs, created_outputs, created_inits
+        )
+
+        check_graph(graph)
+        print("pass graph-check")
+
+        model = helper.make_model(graph, producer_name="onnx-builder")
+        #model = shape_inference.infer_shapes(model)
+        check_model(model)
+        print("pass model-check")
+        print(model)
+
+        onnx.save_model(model, model_name)
 
 
 
@@ -206,10 +340,10 @@ class Dnn:
             new_weights = new_op_attr["weights"]
             dims = new_weights.shape
             expected_dims = [
-                new_op_attr["output_channel"],
                 new_op_attr["input_channel"],
+                new_op_attr["output_channel"],
                 new_op_attr["kernel_height"],
-                new_op_attr["kernel_width"]
+                new_op_attr["kernel_width"],
             ]
             for i in range(0,4):
                 if dims[i] != expected_dims[i]:
@@ -250,7 +384,7 @@ class Dnn:
         self.new_op_addr += 1
 
         if op is not None:
-            self.createOnnxModel([op], model_name)
+            self.createOnnxModel(op, model_name)
             print("Generated ONNX: ",model_name)
             op.parent = parent_op
             for id in successor_lst:
@@ -259,7 +393,8 @@ class Dnn:
             self.new_op = NewOp(
                 new_op_type_str,op,model_name,
                 "tmp/" + new_op_type_str + ".o",
-                "tmp/" + new_op_type_str + ".weights.bin"
+                "tmp/" + new_op_type_str + ".weights.bin",
+                "tmp/" + new_op_type_str + ".s"
             )
         else:
             assert False

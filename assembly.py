@@ -9,6 +9,15 @@ class Assembly:
     def isaType(self):
         return self.isa.isaType()
 
+    def getCallTgtSym(self, asm_insn):
+        words = asm_insn.split()
+        if self.isa.isCallMne(words[0]):
+            return words[1]
+        return None
+
+    def convertLabelLoadToPCRltv(self,asm):
+        return self.isa.convertLabelLoadToPCRltv(asm)
+
     def getCallTgt(self, insn):
         target_address = None
         if self.isa.isCall(insn):
