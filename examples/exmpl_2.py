@@ -21,9 +21,8 @@
 import dnnpatcher
 from dnnpatcher import loadDNN
 
-dnn = loadDNN("~/dnnpatcher/DnD/binary_samples/evkbimxrt1050_glow_lenet_mnist_release.axf")
+dnn = loadDNN("~/dnnpatcher/DnD/binary_samples/evkbimxrt1050_glow_lenet_mnist_release.axf","IMXRT1050")
 
 # dnn.display() --display all the OPs with their ID
 
 dnn.createNewOp("Relu", [1], [2])
-dnn.applyPatches()

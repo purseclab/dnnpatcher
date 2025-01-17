@@ -7,7 +7,7 @@
 import dnnpatcher
 from dnnpatcher import loadDNN
 
-dnn = loadDNN("~/dnnpatcher/DnD/binary_samples/evkbimxrt1050_glow_lenet_mnist_release.axf")
+dnn = loadDNN("~/dnnpatcher/DnD/binary_samples/evkbimxrt1050_glow_lenet_mnist_release.axf","IMXRT1050")
 
 # dnn.display() --display all the OPs with their ID
 
@@ -19,4 +19,3 @@ v[9] = -10000
 v[1] = 10000
 
 dnn.changeBias(5,v)
-dnn.applyPatches()
